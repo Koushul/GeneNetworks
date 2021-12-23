@@ -1,5 +1,10 @@
 #!/bin/python
 
+
+#####
+# PerturbNet model is based on https://github.com/Koushul/PerturbNet
+#####
+
 import os
 from pathlib import Path
 import datetime
