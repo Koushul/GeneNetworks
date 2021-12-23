@@ -1,0 +1,33 @@
+tasks:
+  - source: tasks.download_rawrnaseq
+    product: output/rawrnaseq.parquet
+
+  - source: tasks.download_clinical
+    product: output/clinical.parquet
+
+  - source: tasks.download_mutations
+    product: output/mutations.parquet
+
+  - source: tasks.generate_traits
+    product: output/traits.parquet
+
+  - source: tasks.filter_rnaseq
+    product: output/rnaseq.parquet
+
+  - source: tasks.create_mutation_matrix
+    product: output/mutation_matrix.parquet
+
+  - source: tasks.shape_inputs
+    product: 
+      traits: output/traits.txt
+      expression: output/expression.txt
+      genotype: output/genotype.txt
+      traits_csv: output/traits_data.csv
+      mutations_csv: output/mutations_data.csv
+      rnaseq_csv: output/rnaseq_data.csv
+
+
+
+
+
+

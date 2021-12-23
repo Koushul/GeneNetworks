@@ -130,3 +130,4 @@ dmypy.json
 
 # slurm job script
 run.sh
+find_params.sh
