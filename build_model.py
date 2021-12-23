@@ -14,6 +14,7 @@ import shutil
 import pandas as pd
 import networkx as nx
 import time
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 
 tic = time.perf_counter()
 
@@ -31,7 +32,7 @@ X = np.loadtxt(root_dir / 'genotype.txt', delimiter='\t')
 
 
 lambdaLambda_z = 0
-lambdaTheta_yz = 0.01
+lambdaTheta_yz = 0.02
 
 lambdaLambda_y = 0.65
 lambdaTheta_xy = 0.0787
@@ -67,27 +68,6 @@ with open(root_dir / 'params.json', 'w') as f:
                         'timestamp': datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S")}))
 
 os.chdir(root_dir)
-
-# plt.figure()
-# plt.spy(estTheta_xy)
-# plt.title("Mutations-to-Expression")
-# plt.savefig('theta_xy.png', dpi=300)
-
-# plt.figure()
-# plt.spy(estTheta_yz)
-# plt.title("Expression-to-Traits")
-# plt.savefig('theta_yz.png', dpi=300)
-
-# plt.figure()
-# plt.spy(estLambda_y)
-# plt.title("Expression Network")
-# plt.savefig('lambda_y.png', dpi=300)
-
-# plt.figure()
-# plt.spy(estLambda_z)
-# plt.title("Traits Network")
-# plt.savefig('lambda_z.png', dpi=300)
-
 
 shutil.copy(scripts / f'{cancer}.log', root_dir)
 
@@ -142,23 +122,18 @@ TERT
 
 df = pd.DataFrame(Theta_yz.tocsr().todense())
 hpv_connected_genes = rnaseq.reset_index().loc[df[df[0] != 0][0].index]['index'].values
-
-print(f'HPV connected genes: {len(hpv_connected_genes)}')
-
+print()
+print()
+print(hpv_connected_genes)
+print()
 G = nx.from_scipy_sparse_matrix(Lambda_y)
 G = nx.relabel_nodes(G, dict(zip(range(0, len(rnaseq)), rnaseq.index)))
 
-# neighbor_count = [len(list(nx.neighbors(G, gene))) for gene in rnaseq.index]
-# neighbors = pd.DataFrame(neighbor_count, index=rnaseq.index, columns = ['neighbors'])
-
-# cull = []
-# for i in neighbors[neighbors.neighbors < 2].index:
-#     if i not in hpv_connected_genes:
-#         cull.append(i)
-# G.remove_nodes_from(cull)
-
 G.remove_edges_from(nx.selfloop_edges(G))
 G.remove_nodes_from(set(nx.isolates(G)))
+
+
+print(f'HPV connected genes: {len(hpv_connected_genes)}')
 
 print()
 print([i for i in special_genes if i in G.nodes()])
@@ -206,3 +181,42 @@ print()
 check_impact = [i in impact[impact.overall > 0].sort_values(by='overall', ascending=False)[:25].index for i in ['TP53', 'TTN', 'FAT1', 'NOTCH1', 'PIK3CA', 'CASP8', 'NSD1']]
 check_theta = [i in Theta_df.sort_values(by='weight', ascending=False)[:10].index for i in ['TP53', 'TTN', 'FAT1', 'NOTCH1', 'PIK3CA', 'CASP8', 'NSD1']]
 print(pd.DataFrame([check_impact, check_theta], columns = ['TP53', 'TTN', 'FAT1', 'NOTCH1', 'PIK3CA', 'CASP8', 'NSD1'], index=['in_impact', 'in_theta']).T)
+
+
+def predict_from_expression(patient=None, custom_expression=None, verbose=0):
+    assert patient or custom_expression
+    if patient:
+        exp_matrix = rnaseq[patient].values.reshape(1, -1)
+    else:
+        exp_matrix = custom_expression
+    
+    if verbose > 0 and patient:
+        print(f"Patient {patient} has status {traits.loc[patient].values[0]}")
+
+    return 1 if (exp_matrix * Theta_yz)[0][0] < 0 else 0
+
+    
+def predict_from_mutations(patient=None, custom_mutations=None, verbose=0):
+    assert patient or custom_mutations
+    if patient:
+        mu_matrix = mutations[patient].values.reshape(1, -1)
+    else:
+        mu_matrix = custom_mutations
+    
+    if verbose > 0 and patient:
+        print(f"Patient {patient} has status {traits.loc[patient].values[0]}")
+    
+    return 1 if (mu_matrix * B_xz)[0][0] > 0 else 0
+
+
+
+hpv_array = pd.DataFrame(Theta_yz.tocsr().todense(), index=rnaseq.index).loc[(hpv_connected_genes)].values
+traits['predicted from expr'] = [predict_from_expression(patient=p) for p in traits.index]
+traits['predicted from mutations'] = [predict_from_mutations(patient=p) for p in traits.index]
+
+perf = {}
+for metric, name in zip([accuracy_score, recall_score, precision_score, f1_score, roc_auc_score], ['Accuracy', 'Recall', 'Precision', 'F1_Score', 'AUC']):
+    perf[name] = [metric(traits.hpv, traits['predicted from mutations']), metric(traits.hpv, traits['predicted from expr'])]
+
+print()
+print(pd.DataFrame(perf, index=['From Mutations', 'From HPV Genes']).T)
