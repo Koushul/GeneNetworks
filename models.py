@@ -1,5 +1,4 @@
 from pathlib import Path
-from tqdm import tqdm
 import json
 import pandas as pd
 import numpy as np
@@ -12,6 +11,9 @@ from collections import Counter
 import sys
 import time
 import datetime
+import random
+import string
+import shutil
 
 try:
     import metis
@@ -33,13 +35,18 @@ class NetworkNotCreatedError(Exception):
 class ModelNotTrainedError(Exception):
     pass
 
-
 class GraphicalModel(object):
-    def __init__(self, traits_csv, mutations_csv, rnaseq_csv):
+    def __init__(self, traits_csv, mutations_csv, rnaseq_csv, name: str = ''):
 
         assert isinstance(traits_csv, (Path, str))
         assert isinstance(mutations_csv, (Path, str))
         assert isinstance(rnaseq_csv, (Path, str))
+
+        self.name = name
+        
+        if self.name == '':
+            self.name = ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(12))
+            
 
         self.traits = pd.read_csv(traits_csv).set_index('Unnamed: 0')
         self.mutations = pd.read_csv(mutations_csv).set_index('Unnamed: 0')
@@ -64,7 +71,8 @@ class GraphicalModel(object):
             lambdaLambda_y: float, 
             lambdaTheta_xy: float, 
             max_em_iters = 5, 
-            threads = 8):
+            threads = 8,
+            verbose = False):
             
         assert isinstance(lambdaLambda_z, float)
         assert isinstance(lambdaTheta_yz, float)
@@ -92,7 +100,7 @@ class GraphicalModel(object):
             lambdaTheta_xy, 
             max_em_iters = max_em_iters, 
             threads = threads,
-            verbose = False)
+            verbose = verbose)
 
         self.toc = time.perf_counter()
         self.is_trained = True
@@ -118,17 +126,26 @@ class GraphicalModel(object):
         self.Theta_zy_given_x = np.array([sparse.csr_matrix(np.zeros((len(self.mutations), len(self.traits)))), self.Theta_xy])
         self.Lambda_y_given_xz = sparse.csr_matrix(self.Lambda_y_given_xz)
 
-    def save(self, path):
+    def save(self, path : str):
+        """
+        Export network weights as sparse Matrices and parameters as json
+        """
         if not self.is_trained:
             raise ModelNotTrainedError
-        ssp.save_npz(path / 'Lambda_z.npz', self.Lambda_z)
-        ssp.save_npz(path / 'Theta_yz.npz', self.Theta_yz)
-        ssp.save_npz(path / 'Lambda_y.npz', self.Lambda_y)
-        ssp.save_npz(path / 'Theta_xy.npz', self.Theta_xy)
+
+        shutil.rmtree(str(path) + '/' + self.name, ignore_errors=True)
+        Path(str(path) + '/' + self.name).mkdir()
+
+        save_path = Path(str(path)) / self.name
+
+        ssp.save_npz(save_path / 'Lambda_z.npz', self.Lambda_z)
+        ssp.save_npz(save_path / 'Theta_yz.npz', self.Theta_yz)
+        ssp.save_npz(save_path / 'Lambda_y.npz', self.Lambda_y)
+        ssp.save_npz(save_path / 'Theta_xy.npz', self.Theta_xy)
 
         t = (self.toc - self.tic)/60.0
 
-        with open(path / 'params.json', 'w') as f:
+        with open(save_path / 'params.json', 'w') as f:
             f.write(json.dumps({'lambdaLambda_z': self.lambdaLambda_z, 
                                 'lambdaTheta_yz': self.lambdaTheta_yz, 
                                 'lambdaLambda_y': self.lambdaLambda_y, 
@@ -137,21 +154,29 @@ class GraphicalModel(object):
                                 'threads': int(sys.argv[1]),
                                 'timestamp': datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S")}))                    
         
-    def create_network(self, num_modules : int):
+    def create_network(self, num_modules = None):
+        """
+        Creates a graph of the gene regulatory network with no isolated nodes.
+        If num_modules is specified, genes are grouped into modules.
+        """
         self.Network = nx.from_scipy_sparse_matrix(self.Lambda_y_given_xz)
         self.Network = nx.relabel_nodes(self.Network, dict(zip(range(0, len(self.rnaseq)), self.rnaseq.index)))
         self.Network.remove_edges_from(nx.selfloop_edges(self.Network))
         self.Network.remove_nodes_from(set(nx.isolates(self.Network)))
 
-        _, self.parts = metis.part_graph(self.Network, num_modules, recursive=True)
+        if num_modules != None:
+            _, self.parts = metis.part_graph(self.Network, num_modules, recursive=True)
 
-        self.modules = []
-        for i in range(len(Counter(self.parts).keys())):
-            self.modules.append(np.where(np.array(self.parts)==i)[0])
+            self.modules = []
+            for i in range(len(Counter(self.parts).keys())):
+                self.modules.append(np.where(np.array(self.parts)==i)[0])
             
-        print(f"Created Network with {len(self.Network.nodes())} nodes and {num_modules} modules.")
-            
+            print(f"Created Network with {len(self.Network.nodes())} nodes and {num_modules} modules.")
+        else:
+            print(f"Created Network with {len(self.Network.nodes())} nodes.")
+ 
     def locate_gene(self, gene : str) -> int: 
+        """Find which module a gene is in"""
         assert isinstance(gene, str)
         if not self.parts: raise NetworkNotCreatedError
         return self.parts[list(self.Network.nodes()).index(gene)]
@@ -186,8 +211,7 @@ class GraphicalModel(object):
             print(f"Patient {patient} has status {self.traits.loc[patient].values[0]}")
 
         return 1 if (exp_matrix * self.Theta_yz)[0][0] < 0 else 0
-    
-        
+      
     def predict_from_mutations(self, patient : str = None, custom_mutations = None, verbose : int = 0) -> int: 
         if not self.is_trained:
             raise ModelNotTrainedError

@@ -8,9 +8,9 @@ def objective(trial):
 
     params = {
         "lambdaLambda_z": trial.suggest_float("z", 0, 1, step=0.3), 
-        "lambdaTheta_yz": trial.suggest_float("yz", 0, 0.1, step=0.01), 
-        "lambdaLambda_y": trial.suggest_float("y", 0, 0.9, step=0.01), 
-        "lambdaTheta_xy": trial.suggest_float("xy", 0, 0.01, step=0.01), 
+        "lambdaTheta_yz": trial.suggest_float("yz", 0, 0.9, step=0.01), 
+        "lambdaLambda_y": trial.suggest_float("y", 0.3, 0.6, step=0.02), 
+        "lambdaTheta_xy": trial.suggest_float("xy", 0, 0.9, step=0.01), 
         "max_em_iters" : 6, 
         "threads" : 46
     }
@@ -19,17 +19,19 @@ def objective(trial):
                 mutations_csv='output/mutations_data.csv', 
                 rnaseq_csv='output/rnaseq_data.csv')
     
-    model.fit(**params)
-
-    predictions = [model.predict_from_mutations(patient=p) for p in model.patients]
-    score = recall_score(model.traits.hpv, predictions)
+    try:
+        model.fit(**params)
+        predictions = [model.predict_from_mutations(patient=p) for p in model.patients]
+        score = recall_score(model.traits.hpv, predictions)
+    except:
+        score = -1
 
     return score
 
 
 sampler = TPESampler(multivariate=True)
 study = create_study(direction="maximize", sampler=sampler)
-study.optimize(lambda trial: objective(trial), n_trials=30)
+study.optimize(lambda trial: objective(trial), n_trials=50)
 
 with open('optuna_params.json', 'w') as f:
     f.write(json.dumps(study.best_params))

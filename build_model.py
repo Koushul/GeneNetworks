@@ -12,9 +12,9 @@ from models import GraphicalModel
 
 
 lambdaLambda_z = 0.0
-lambdaTheta_yz = 0.04
+lambdaTheta_yz = 0.02
 
-lambdaLambda_y = 0.6
+lambdaLambda_y = 0.5
 lambdaTheta_xy = 0.01
 
 
@@ -26,11 +26,16 @@ model.fit(lambdaLambda_z,
     lambdaTheta_yz,
     lambdaLambda_y, 
     lambdaTheta_xy, 
-    threads= int(sys.argv[1]))
+    threads= int(sys.argv[1]),
+    verbose = True)
 
-model.save(Path('models'))
+model.create_network()
 
-shutil.copy('HNSC.log', 'models')
+print(len(model.hpv_connected_genes))
+
+model.save(path='models')
+
+shutil.copy('HNSC.log', f'models/{model.name}')
 
 import warnings
 warnings.filterwarnings('ignore')
