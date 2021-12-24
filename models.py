@@ -25,7 +25,7 @@ import warnings
 warnings.filterwarnings('ignore')
 warnings.simplefilter('ignore', SparseEfficiencyWarning)
 
-sys.path.append("../EM-sCGGM/")
+sys.path.append("../EM-sCGGM/") # requires PerturbNet from https://github.com/Koushul/PerturbNet
 from em_scggm import em_scggm
 
 
@@ -105,7 +105,13 @@ class GraphicalModel(object):
         self.toc = time.perf_counter()
         self.is_trained = True
 
-        ## Inference matrices ##
+        self._build_inference_matrices()
+
+
+    def _build_inference_matrices(self):
+        if not self.is_trained:
+            raise ModelNotTrainedError
+        
         self.Sigma_z = inv(self.Lambda_z)
         self.Sigma_y = inv(self.Lambda_y)
         self.Sigma_z = self.Sigma_z.reshape(-1, 1)
@@ -126,12 +132,28 @@ class GraphicalModel(object):
         self.Theta_zy_given_x = np.array([sparse.csr_matrix(np.zeros((len(self.mutations), len(self.traits)))), self.Theta_xy])
         self.Lambda_y_given_xz = sparse.csr_matrix(self.Lambda_y_given_xz)
 
+    def load(self, path : str):
+        """Load a pre-trained model"""
+
+        load_path = Path(str(path))
+
+        self.Theta_xy = ssp.load_npz(load_path / 'Theta_xy.npz') # Mutations-to-Expression
+        self.Lambda_y = ssp.load_npz(load_path / 'Lambda_y.npz') # Expression Network
+        self.Lambda_z = ssp.load_npz(load_path / 'Lambda_z.npz') # Traits Network
+        self.Theta_yz = ssp.load_npz(load_path / 'Theta_yz.npz') # Expression-to-Trait
+
+        self.is_trained = True
+        self.name = load_path.parts[-1]
+        self._build_inference_matrices()
+
     def save(self, path : str):
         """
         Export network weights as sparse Matrices and parameters as json
         """
         if not self.is_trained:
             raise ModelNotTrainedError
+        
+        now = datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
 
         shutil.rmtree(str(path) + '/' + self.name, ignore_errors=True)
         Path(str(path) + '/' + self.name).mkdir()
@@ -146,14 +168,18 @@ class GraphicalModel(object):
         t = (self.toc - self.tic)/60.0
 
         with open(save_path / 'params.json', 'w') as f:
-            f.write(json.dumps({'lambdaLambda_z': self.lambdaLambda_z, 
-                                'lambdaTheta_yz': self.lambdaTheta_yz, 
-                                'lambdaLambda_y': self.lambdaLambda_y, 
-                                'lambdaTheta_xy': self.lambdaTheta_xy,
-                                'time_elapsed': round(t, 3),
-                                'threads': int(sys.argv[1]),
-                                'timestamp': datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S")}))                    
-        
+            f.write(json.dumps({
+                'lambdaLambda_z': self.lambdaLambda_z, 
+                'lambdaTheta_yz': self.lambdaTheta_yz, 
+                'lambdaLambda_y': self.lambdaLambda_y, 
+                'lambdaTheta_xy': self.lambdaTheta_xy,
+                'time_elapsed': round(t, 3),
+                'threads': int(sys.argv[1]),
+                'timestamp': now 
+            }))        
+
+        print(f'Model {self.name} saved on {now} in {path}.')            
+
     def create_network(self, num_modules = None):
         """
         Creates a graph of the gene regulatory network with no isolated nodes.

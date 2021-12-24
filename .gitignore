@@ -131,3 +131,9 @@ dmypy.json
 # slurm job script
 run.sh
 find_params.sh
+
+# logs
+HNSC.log
+
+# zip exports
+HNSC.zip

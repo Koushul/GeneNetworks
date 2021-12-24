@@ -7,10 +7,10 @@ import json
 def objective(trial):
 
     params = {
-        "lambdaLambda_z": trial.suggest_float("z", 0, 1, step=0.3), 
-        "lambdaTheta_yz": trial.suggest_float("yz", 0, 0.9, step=0.01), 
-        "lambdaLambda_y": trial.suggest_float("y", 0.3, 0.6, step=0.02), 
-        "lambdaTheta_xy": trial.suggest_float("xy", 0, 0.9, step=0.01), 
+        "lambdaLambda_z": trial.suggest_float("z",  0.01, 1.00, step=0.30), 
+        "lambdaTheta_yz": trial.suggest_float("yz", 0.05, 0.10, step=0.01), 
+        "lambdaLambda_y": trial.suggest_float("y",  0.40, 0.65, step=0.02), 
+        "lambdaTheta_xy": trial.suggest_float("xy", 0.02, 0.20, step=0.01), 
         "max_em_iters" : 6, 
         "threads" : 46
     }
