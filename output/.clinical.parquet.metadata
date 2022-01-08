@@ -1,1 +1,0 @@
-{"timestamp": 1640237865.773542, "stored_source_code": "def download_clinical(product):\n    clinical = pd.read_table(PHENOTYPE_URL)\n    clinical.to_parquet(str(product))\n", "params": {}}

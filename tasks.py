@@ -2,11 +2,14 @@ import pandas as pd
 from pathlib import Path
 import numpy as np
 from scipy.stats import ttest_ind as ttest
+import requests
+import tarfile
 
 
 EXPRESSION_URL = 'https://media.githubusercontent.com/media/cBioPortal/datahub/master/public/hnsc_tcga_pan_can_atlas_2018/data_mrna_seq_v2_rsem.txt'
 PHENOTYPE_URL = 'https://media.githubusercontent.com/media/cBioPortal/datahub/master/public/hnsc_tcga_pan_can_atlas_2018/data_clinical_patient.txt'
 GENOTYPE_URL = 'https://media.githubusercontent.com/media/cBioPortal/datahub/master/public/hnsc_tcga_pan_can_atlas_2018/data_mutations.txt'
+FIREBROWSER_URL = "https://gdac.broadinstitute.org/runs/stddata__2016_01_28/data/HNSC/20160128/gdac.broadinstitute.org_HNSC.Merge_Clinical.Level_1.2016012800.0.0.tar.gz"
 MUTATED_GENES = Path('Mutated_Genes.txt')
 
 
@@ -16,8 +19,31 @@ def download_rawrnaseq(product):
     rawrnaseq.to_parquet(str(product))
 
 def download_clinical(product):
-    clinical = pd.read_table(PHENOTYPE_URL)
-    clinical.to_parquet(str(product))
+    clinical_from_cbioportal = pd.read_table(PHENOTYPE_URL)
+
+    r = requests.get(FIREBROWSER_URL, stream=True)
+    if r.status_code == 200:
+        with open('/tmp/gdac_broad_clinical.tar.gz', 'wb') as f:
+            f.write(r.raw.read())
+
+    t = tarfile.open('/tmp/gdac_broad_clinical.tar.gz', "r")
+    with tarfile.open('/tmp/gdac_broad_clinical.tar.gz') as f:
+        f.extractall('/tmp')
+
+    clinical_from_broad = pd.read_csv('/tmp/' + FIREBROWSER_URL.split('/')[-1].split('.tar.gz')[0] + '/HNSC.clin.merged.txt', delimiter='\t')
+    clinical_from_broad.columns = clinical_from_broad.iloc[0]
+    clinical_from_broad = clinical_from_broad[1:]
+    clinical_from_broad = clinical_from_broad.T
+    clinical_from_broad.columns = clinical_from_broad.loc['admin.bcr']
+    clinical_from_broad = clinical_from_broad.drop('admin.bcr')
+    clinical_from_broad = clinical_from_broad.set_index('patient.bcr_patient_barcode')
+    clinical_from_broad.index.name = None
+    clinical_from_broad.index = clinical_from_broad.index.str.upper()
+
+    clinical_from_broad.to_parquet(str(product['clinical_from_broad']))
+    clinical_from_cbioportal.to_parquet(str(product['clinical_from_cbioportal']))
+
+
 
 def download_mutations(product):
     mutations = pd.read_table(GENOTYPE_URL)
@@ -25,14 +51,23 @@ def download_mutations(product):
 
 
 def generate_traits(upstream, product):
-    clinical = pd.read_parquet(str(upstream['download_clinical']))
-    clinical = clinical.drop([0, 1, 2, 3])
-    clinical = clinical.set_index('#Patient Identifier')
-    traits = clinical[['Subtype']].copy()
+
+    clinical_from_broad = pd.read_parquet(str(upstream['download_clinical']['clinical_from_broad']))
+    clinical_from_cbioportal = pd.read_parquet(str(upstream['download_clinical']['clinical_from_cbioportal']))
+
+    clinical_from_cbioportal = clinical_from_cbioportal.drop([0, 1, 2, 3])
+    clinical_from_cbioportal = clinical_from_cbioportal.set_index('#Patient Identifier')
+    traits = clinical_from_cbioportal[['Subtype', 'Overall Survival Status']].copy()
     traits.index.name = None
-    traits.columns = ['hpv']
+    traits.columns = ['hpv', 'survival']
     traits = traits.dropna()
     traits.hpv = traits.hpv.replace({'HNSC_HPV-': 0, 'HNSC_HPV+': 1})
+    traits['survival'] = traits['survival'].replace({'0:LIVING': 1, '1:DECEASED': 0})
+
+    traits = traits.join(clinical_from_broad['patient.tobacco_smoking_history']).dropna()
+    traits.columns = ['hpv', 'survival', 'smoker']
+    traits.smoker = traits.smoker.apply(lambda x: 0 if x in ['1', '3'] else 1)
+
     traits.to_parquet(str(product))
 
 

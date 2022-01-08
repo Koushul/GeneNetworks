@@ -137,3 +137,7 @@ HNSC.log
 
 # zip exports
 HNSC.zip
+
+# models and data
+output/
+models/

@@ -173,7 +173,7 @@ class GraphicalModel(object):
                 'lambdaTheta_yz': self.lambdaTheta_yz, 
                 'lambdaLambda_y': self.lambdaLambda_y, 
                 'lambdaTheta_xy': self.lambdaTheta_xy,
-                'time_elapsed': round(t, 3),
+                'runtime_minutes': round(t, 3),
                 'threads': int(sys.argv[1]),
                 'timestamp': now 
             }))        

@@ -3,7 +3,9 @@ tasks:
     product: output/rawrnaseq.parquet
 
   - source: tasks.download_clinical
-    product: output/clinical.parquet
+    product:       
+      clinical_from_broad: output/clinical_from_broad.parquet
+      clinical_from_cbioportal: output/clinical_from_cbioportal.parquet
 
   - source: tasks.download_mutations
     product: output/mutations.parquet

@@ -17,14 +17,15 @@ warnings.filterwarnings('ignore')
 
 ## lower values decreases sparsity i.e number of edges increases
 lambdaLambda_z = 0.31 
-lambdaTheta_yz = 0.015 
-lambdaLambda_y = 0.48 
+lambdaTheta_yz = 0.037 
+lambdaLambda_y = 0.5
 lambdaTheta_xy = 0.03 
 
 
 model = GraphicalModel(traits_csv='output/traits_data.csv', 
             mutations_csv='output/mutations_data.csv', 
             rnaseq_csv='output/rnaseq_data.csv')
+
 
 model.fit(lambdaLambda_z, 
     lambdaTheta_yz,
