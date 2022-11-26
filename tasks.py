@@ -28,7 +28,29 @@ def download_clinical(product):
 
     t = tarfile.open('/tmp/gdac_broad_clinical.tar.gz', "r")
     with tarfile.open('/tmp/gdac_broad_clinical.tar.gz') as f:
-        f.extractall('/tmp')
+        
+        import os
+        
+        def is_within_directory(directory, target):
+            
+            abs_directory = os.path.abspath(directory)
+            abs_target = os.path.abspath(target)
+        
+            prefix = os.path.commonprefix([abs_directory, abs_target])
+            
+            return prefix == abs_directory
+        
+        def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+        
+            for member in tar.getmembers():
+                member_path = os.path.join(path, member.name)
+                if not is_within_directory(path, member_path):
+                    raise Exception("Attempted Path Traversal in Tar File")
+        
+            tar.extractall(path, members, numeric_owner=numeric_owner) 
+            
+        
+        safe_extract(f, "/tmp")
 
     clinical_from_broad = pd.read_csv('/tmp/' + FIREBROWSER_URL.split('/')[-1].split('.tar.gz')[0] + '/HNSC.clin.merged.txt', delimiter='\t')
     clinical_from_broad.columns = clinical_from_broad.iloc[0]
